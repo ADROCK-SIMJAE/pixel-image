@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leaflet with Pixel Art</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      href="https://unpkg.com/tailwindcss@^2.0/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      #map {
+        height: 600px;
+        width: 800px; /* Adjust as needed */
+      }
+    </style>
+  </head>
+  <body class="flex">
+    <div id="map" class="mr-4"></div>
+    <div class="flex flex-col space-y-4">
+      <button id="convertBtn" class="px-4 py-2 bg-blue-500 text-white rounded">
+        Convert to Base64
+      </button>
+      <!-- Add more buttons here as needed -->
+    </div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  </body>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (L.DomUtil.get("map")._leaflet_id) {
+        L.DomUtil.get("map")._leaflet_id = null;
+      }
+
+      const map = L.map("map", {
+        crs: L.CRS.Simple,
+        minZoom: -5,
+      }).setView([0, 0], 0);
+
+      const imageUrl = "./sample.webp";
+      const imageBounds = [
+        [0, 0],
+        [512, 512],
+      ];
+
+      const imageOverlay = L.imageOverlay(imageUrl, imageBounds).addTo(map);
+      map.fitBounds(imageBounds);
+
+      imageOverlay.on("load", () => {
+        const img = document.querySelector(".leaflet-image-layer");
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+
+        img.style.display = "none";
+        img.parentNode.insertBefore(canvas, img);
+
+        canvas.style.position = "absolute";
+        canvas.style.top = "0";
+        canvas.style.left = "0";
+
+        const pixelSize = 10; // Define the size of each pixel block
+        const selectedPixels = {}; // Store the original color of selected pixels
+
+        // Draw the pixelated image
+        const drawPixelatedImage = () => {
+          for (let y = 0; y < canvas.height; y += pixelSize) {
+            for (let x = 0; x < canvas.width; x += pixelSize) {
+              const pixelData = ctx.getImageData(
+                x,
+                y,
+                pixelSize,
+                pixelSize
+              ).data;
+              const r = pixelData[0];
+              const g = pixelData[1];
+              const b = pixelData[2];
+
+              ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+              ctx.fillRect(x, y, pixelSize, pixelSize);
+            }
+          }
+        };
+
+        drawPixelatedImage();
+
+        const updateCanvasPosition = () => {
+          const bounds = imageOverlay._bounds;
+          const topLeft = map.latLngToLayerPoint(bounds.getNorthWest());
+          const bottomRight = map.latLngToLayerPoint(bounds.getSouthEast());
+
+          canvas.style.width = `${bottomRight.x - topLeft.x}px`;
+          canvas.style.height = `${bottomRight.y - topLeft.y}px`;
+          canvas.style.transform = `translate(${topLeft.x}px, ${topLeft.y}px)`;
+        };
+
+        map.on("zoomend", updateCanvasPosition);
+        map.on("moveend", updateCanvasPosition);
+        updateCanvasPosition();
+
+        let isDragging = false;
+
+        canvas.addEventListener("mousedown", () => {
+          isDragging = false;
+        });
+
+        canvas.addEventListener("mousemove", () => {
+          isDragging = true;
+        });
+
+        canvas.addEventListener("mouseup", (e) => {
+          if (!isDragging) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x =
+              Math.floor(((e.clientX - rect.left) * scaleX) / pixelSize) *
+              pixelSize;
+            const y =
+              Math.floor(((e.clientY - rect.top) * scaleY) / pixelSize) *
+              pixelSize;
+
+            const pixelKey = `${x},${y}`;
+            const pixel = ctx.getImageData(x, y, pixelSize, pixelSize).data;
+
+            if (selectedPixels[pixelKey]) {
+              const originalColor = selectedPixels[pixelKey];
+              ctx.fillStyle = `rgb(${originalColor[0]}, ${originalColor[1]}, ${originalColor[2]})`;
+              delete selectedPixels[pixelKey];
+            } else {
+              selectedPixels[pixelKey] = [pixel[0], pixel[1], pixel[2]];
+              ctx.fillStyle = "red";
+            }
+            ctx.fillRect(x, y, pixelSize, pixelSize);
+            console.log(
+              `Coordinates: (${x}, ${y}), Color: rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`
+            );
+          }
+        });
+
+        document.getElementById("convertBtn").addEventListener("click", () => {
+          const base64Image = canvas.toDataURL("image/png");
+          console.log(base64Image);
+          alert("Image converted to Base64. Check the console for the output.");
+        });
+      });
+    });
+  </script>
+</html>
