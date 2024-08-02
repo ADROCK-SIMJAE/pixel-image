@@ -29,6 +29,7 @@
   <body class="flex">
     <div id="map" class="mr-4"></div>
     <div class="flex flex-col space-y-4">
+      <input type="file" id="imageUpload" class="mb-2" accept="image/*" />
       <button id="convertBtn" class="px-4 py-2 bg-blue-500 text-white rounded">
         Base64로 변환
       </button>
@@ -55,175 +56,200 @@
         minZoom: -5,
       }).setView([0, 0], 0);
 
-      const imageUrl = "./sample.webp";
-      const imageBounds = [
-        [0, 0],
-        [512, 512],
-      ];
+      let base64Image = "";
+      let imageOverlay;
+      const pixelSize = 10;
+      const selectedPixels = {};
 
-      const imageOverlay = L.imageOverlay(imageUrl, imageBounds).addTo(map);
-      map.fitBounds(imageBounds);
+      const loadImage = (url) => {
+        if (imageOverlay) {
+          map.removeLayer(imageOverlay);
+        }
 
-      imageOverlay.on("load", () => {
-        const img = document.querySelector(".leaflet-image-layer");
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0);
+        const imageBounds = [
+          [0, 0],
+          [512, 512],
+        ];
 
-        img.style.display = "none";
-        img.parentNode.insertBefore(canvas, img);
+        imageOverlay = L.imageOverlay(url, imageBounds).addTo(map);
+        map.fitBounds(imageBounds);
 
-        canvas.style.position = "absolute";
-        canvas.style.top = "0";
-        canvas.style.left = "0";
+        imageOverlay.on("load", () => {
+          const img = document.querySelector(".leaflet-image-layer");
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
 
-        const pixelSize = 10; // Define the size of each pixel block
-        const selectedPixels = {}; // Store the original color of selected pixels
+          img.style.display = "none";
+          img.parentNode.insertBefore(canvas, img);
 
-        // Draw the pixelated image
-        const drawPixelatedImage = () => {
-          for (let y = 0; y < canvas.height; y += pixelSize) {
-            for (let x = 0; x < canvas.width; x += pixelSize) {
-              const pixelData = ctx.getImageData(
-                x,
-                y,
-                pixelSize,
-                pixelSize
-              ).data;
-              const r = pixelData[0];
-              const g = pixelData[1];
-              const b = pixelData[2];
+          canvas.style.position = "absolute";
+          canvas.style.top = "0";
+          canvas.style.left = "0";
 
-              ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-              ctx.fillRect(x, y, pixelSize, pixelSize);
-            }
-          }
-        };
+          const drawPixelatedImage = () => {
+            for (let y = 0; y < canvas.height; y += pixelSize) {
+              for (let x = 0; x < canvas.width; x += pixelSize) {
+                const pixelData = ctx.getImageData(
+                  x,
+                  y,
+                  pixelSize,
+                  pixelSize
+                ).data;
+                const r = pixelData[0];
+                const g = pixelData[1];
+                const b = pixelData[2];
 
-        drawPixelatedImage();
-
-        const updateCanvasPosition = () => {
-          const bounds = imageOverlay._bounds;
-          const topLeft = map.latLngToLayerPoint(bounds.getNorthWest());
-          const bottomRight = map.latLngToLayerPoint(bounds.getSouthEast());
-
-          canvas.style.width = `${bottomRight.x - topLeft.x}px`;
-          canvas.style.height = `${bottomRight.y - topLeft.y}px`;
-          canvas.style.transform = `translate(${topLeft.x}px, ${topLeft.y}px)`;
-        };
-
-        map.on("zoomend", updateCanvasPosition);
-        map.on("moveend", updateCanvasPosition);
-        updateCanvasPosition();
-
-        let isDragging = false;
-
-        canvas.addEventListener("mousedown", () => {
-          isDragging = false;
-        });
-
-        canvas.addEventListener("mousemove", () => {
-          isDragging = true;
-        });
-
-        canvas.addEventListener("mouseup", (e) => {
-          if (!isDragging) {
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            const x =
-              Math.floor(((e.clientX - rect.left) * scaleX) / pixelSize) *
-              pixelSize;
-            const y =
-              Math.floor(((e.clientY - rect.top) * scaleY) / pixelSize) *
-              pixelSize;
-
-            const pixelKey = `${x},${y}`;
-            const pixel = ctx.getImageData(x, y, pixelSize, pixelSize).data;
-
-            if (selectedPixels[pixelKey]) {
-              const originalColor = selectedPixels[pixelKey];
-              ctx.fillStyle = `rgb(${originalColor[0]}, ${originalColor[1]}, ${originalColor[2]})`;
-              delete selectedPixels[pixelKey];
-            } else {
-              selectedPixels[pixelKey] = [pixel[0], pixel[1], pixel[2]];
-              ctx.fillStyle = "red";
-            }
-            ctx.fillRect(x, y, pixelSize, pixelSize);
-            console.log(
-              `Coordinates: (${x}, ${y}), Color: rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`
-            );
-          }
-        });
-
-        let base64Image = "";
-
-        const calculateImageSizes = (dataUrl) => {
-          // Convert Base64 to Blob
-          const base64ToBlob = (base64, mime) => {
-            const byteChars = atob(base64.split(",")[1]);
-            const byteArrays = [];
-            for (let offset = 0; offset < byteChars.length; offset += 512) {
-              const slice = byteChars.slice(offset, offset + 512);
-              const byteNumbers = new Array(slice.length);
-              for (let i = 0; i < slice.length; i++) {
-                byteNumbers[i] = slice.charCodeAt(i);
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(x, y, pixelSize, pixelSize);
               }
-              const byteArray = new Uint8Array(byteNumbers);
-              byteArrays.push(byteArray);
             }
-            return new Blob(byteArrays, { type: mime });
           };
 
-          const base64Size = Math.round((dataUrl.length * 3) / 4 / 1024);
+          drawPixelatedImage();
 
-          const pngBlob = base64ToBlob(dataUrl, "image/png");
-          const jpegBlob = base64ToBlob(dataUrl, "image/jpeg");
+          const updateCanvasPosition = () => {
+            const bounds = imageOverlay._bounds;
+            const topLeft = map.latLngToLayerPoint(bounds.getNorthWest());
+            const bottomRight = map.latLngToLayerPoint(bounds.getSouthEast());
 
-          const reader = new FileReader();
-          reader.onload = () => {
-            const arrayBuffer = reader.result;
-            const compressedSizes = {
-              png: Math.round(pngBlob.size / 1024),
-              jpeg: Math.round(jpegBlob.size / 1024),
-            };
-
-            document.getElementById(
-              "imageSizeDetails"
-            ).textContent = `Base64: ${base64Size} KB, PNG: ${compressedSizes.png} KB, JPEG: ${compressedSizes.jpeg} KB`;
+            canvas.style.width = `${bottomRight.x - topLeft.x}px`;
+            canvas.style.height = `${bottomRight.y - topLeft.y}px`;
+            canvas.style.transform = `translate(${topLeft.x}px, ${topLeft.y}px)`;
           };
 
-          reader.readAsArrayBuffer(pngBlob);
+          map.on("zoomend", updateCanvasPosition);
+          map.on("moveend", updateCanvasPosition);
+          updateCanvasPosition();
+
+          let isDragging = false;
+
+          canvas.addEventListener("mousedown", () => {
+            isDragging = false;
+          });
+
+          canvas.addEventListener("mousemove", () => {
+            isDragging = true;
+          });
+
+          canvas.addEventListener("mouseup", (e) => {
+            if (!isDragging) {
+              const rect = canvas.getBoundingClientRect();
+              const scaleX = canvas.width / rect.width;
+              const scaleY = canvas.height / rect.height;
+              const x =
+                Math.floor(((e.clientX - rect.left) * scaleX) / pixelSize) *
+                pixelSize;
+              const y =
+                Math.floor(((e.clientY - rect.top) * scaleY) / pixelSize) *
+                pixelSize;
+
+              const pixelKey = `${x},${y}`;
+              const pixel = ctx.getImageData(x, y, pixelSize, pixelSize).data;
+
+              if (selectedPixels[pixelKey]) {
+                const originalColor = selectedPixels[pixelKey];
+                ctx.fillStyle = `rgb(${originalColor[0]}, ${originalColor[1]}, ${originalColor[2]})`;
+                delete selectedPixels[pixelKey];
+              } else {
+                selectedPixels[pixelKey] = [pixel[0], pixel[1], pixel[2]];
+                ctx.fillStyle = "red";
+              }
+              ctx.fillRect(x, y, pixelSize, pixelSize);
+              console.log(
+                `Coordinates: (${x}, ${y}), Color: rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`
+              );
+            }
+          });
+
+          document
+            .getElementById("convertBtn")
+            .addEventListener("click", () => {
+              base64Image = canvas.toDataURL("image/png");
+              console.log(base64Image);
+              alert("이미지가 Base64로 변환되었습니다. 콘솔에서 확인하세요.");
+            });
+
+          document.getElementById("decodeBtn").addEventListener("click", () => {
+            if (base64Image) {
+              const decodedImage = document.getElementById("decodedImage");
+              decodedImage.src = base64Image;
+              decodedImage.classList.remove("hidden");
+              document
+                .getElementById("noDecoderMessage")
+                .classList.add("hidden");
+
+              const imageSize = Math.round((base64Image.length * 3) / 4 / 1024);
+              document.getElementById(
+                "imageSize"
+              ).textContent = `이미지 용량: ${imageSize} KB`;
+
+              calculateImageSizes(base64Image);
+
+              alert("Base64 이미지가 디코딩되어 표시되었습니다.");
+            } else {
+              alert("먼저 이미지를 Base64로 변환하세요.");
+            }
+          });
+        });
+      };
+
+      const calculateImageSizes = (dataUrl) => {
+        // Convert Base64 to Blob
+        const base64ToBlob = (base64, mime) => {
+          const byteChars = atob(base64.split(",")[1]);
+          const byteArrays = [];
+          for (let offset = 0; offset < byteChars.length; offset += 512) {
+            const slice = byteChars.slice(offset, offset + 512);
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) {
+              byteNumbers[i] = slice.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            byteArrays.push(byteArray);
+          }
+          return new Blob(byteArrays, { type: mime });
         };
 
-        document.getElementById("convertBtn").addEventListener("click", () => {
-          base64Image = canvas.toDataURL("image/png");
-          console.log(base64Image);
-          alert("이미지가 Base64로 변환되었습니다. 콘솔에서 확인하세요.");
-        });
+        const base64Size = Math.round((dataUrl.length * 3) / 4 / 1024);
 
-        document.getElementById("decodeBtn").addEventListener("click", () => {
-          if (base64Image) {
-            const decodedImage = document.getElementById("decodedImage");
-            decodedImage.src = base64Image;
-            decodedImage.classList.remove("hidden");
-            document.getElementById("noDecoderMessage").classList.add("hidden");
+        const pngBlob = base64ToBlob(dataUrl, "image/png");
+        const jpegBlob = base64ToBlob(dataUrl, "image/jpeg");
+        const webpBlob = base64ToBlob(dataUrl, "image/webp");
+        const gifBlob = base64ToBlob(dataUrl, "image/gif");
 
-            const imageSize = Math.round((base64Image.length * 3) / 4 / 1024);
-            document.getElementById(
-              "imageSize"
-            ).textContent = `이미지 용량: ${imageSize} KB`;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const arrayBuffer = reader.result;
+          const compressedSizes = {
+            png: Math.round(pngBlob.size / 1024),
+            jpeg: Math.round(jpegBlob.size / 1024),
+            webp: Math.round(webpBlob.size / 1024),
+            gif: Math.round(gifBlob.size / 1024),
+          };
 
-            calculateImageSizes(base64Image);
+          document.getElementById(
+            "imageSizeDetails"
+          ).textContent = `Base64: ${base64Size} KB, PNG: ${compressedSizes.png} KB, JPEG: ${compressedSizes.jpeg} KB, WEBP: ${compressedSizes.webp} KB, GIF: ${compressedSizes.gif} KB`;
+        };
 
-            alert("Base64 이미지가 디코딩되어 표시되었습니다.");
-          } else {
-            alert("먼저 이미지를 Base64로 변환하세요.");
-          }
-        });
+        reader.readAsArrayBuffer(pngBlob);
+      };
+
+      document.getElementById("imageUpload").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const url = event.target.result;
+          loadImage(url);
+        };
+        reader.readAsDataURL(file);
       });
+
+      // 기본 이미지 로드
+      loadImage("./sample.webp");
     });
   </script>
 </html>
