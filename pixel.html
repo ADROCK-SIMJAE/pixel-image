@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,15 +14,33 @@
         height: 600px;
         width: 800px; /* Adjust as needed */
       }
+      #decodedPreview {
+        border: 2px solid black;
+        padding: 10px;
+        width: 400px;
+        height: 400px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 10px;
+      }
     </style>
   </head>
   <body class="flex">
     <div id="map" class="mr-4"></div>
     <div class="flex flex-col space-y-4">
       <button id="convertBtn" class="px-4 py-2 bg-blue-500 text-white rounded">
-        Convert to Base64
+        Base64로 변환
       </button>
-      <!-- Add more buttons here as needed -->
+      <button id="decodeBtn" class="px-4 py-2 bg-green-500 text-white rounded">
+        Base64 디코딩
+      </button>
+      <div id="decodedPreview" class="mt-4">
+        <span id="noDecoderMessage">no decoder</span>
+        <img id="decodedImage" alt="디코드된 이미지" class="hidden" />
+      </div>
+      <div id="imageSize" class="text-center">이미지 용량: N/A</div>
+      <div id="imageSizeDetails" class="text-center"></div>
     </div>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   </body>
@@ -140,10 +158,70 @@
           }
         });
 
+        let base64Image = "";
+
+        const calculateImageSizes = (dataUrl) => {
+          // Convert Base64 to Blob
+          const base64ToBlob = (base64, mime) => {
+            const byteChars = atob(base64.split(",")[1]);
+            const byteArrays = [];
+            for (let offset = 0; offset < byteChars.length; offset += 512) {
+              const slice = byteChars.slice(offset, offset + 512);
+              const byteNumbers = new Array(slice.length);
+              for (let i = 0; i < slice.length; i++) {
+                byteNumbers[i] = slice.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              byteArrays.push(byteArray);
+            }
+            return new Blob(byteArrays, { type: mime });
+          };
+
+          const base64Size = Math.round((dataUrl.length * 3) / 4 / 1024);
+
+          const pngBlob = base64ToBlob(dataUrl, "image/png");
+          const jpegBlob = base64ToBlob(dataUrl, "image/jpeg");
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            const arrayBuffer = reader.result;
+            const compressedSizes = {
+              png: Math.round(pngBlob.size / 1024),
+              jpeg: Math.round(jpegBlob.size / 1024),
+            };
+
+            document.getElementById(
+              "imageSizeDetails"
+            ).textContent = `Base64: ${base64Size} KB, PNG: ${compressedSizes.png} KB, JPEG: ${compressedSizes.jpeg} KB`;
+          };
+
+          reader.readAsArrayBuffer(pngBlob);
+        };
+
         document.getElementById("convertBtn").addEventListener("click", () => {
-          const base64Image = canvas.toDataURL("image/png");
+          base64Image = canvas.toDataURL("image/png");
           console.log(base64Image);
-          alert("Image converted to Base64. Check the console for the output.");
+          alert("이미지가 Base64로 변환되었습니다. 콘솔에서 확인하세요.");
+        });
+
+        document.getElementById("decodeBtn").addEventListener("click", () => {
+          if (base64Image) {
+            const decodedImage = document.getElementById("decodedImage");
+            decodedImage.src = base64Image;
+            decodedImage.classList.remove("hidden");
+            document.getElementById("noDecoderMessage").classList.add("hidden");
+
+            const imageSize = Math.round((base64Image.length * 3) / 4 / 1024);
+            document.getElementById(
+              "imageSize"
+            ).textContent = `이미지 용량: ${imageSize} KB`;
+
+            calculateImageSizes(base64Image);
+
+            alert("Base64 이미지가 디코딩되어 표시되었습니다.");
+          } else {
+            alert("먼저 이미지를 Base64로 변환하세요.");
+          }
         });
       });
     });
